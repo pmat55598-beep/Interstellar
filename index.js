@@ -38,7 +38,11 @@ app.get("/e/*", async (req, res, next) => {
       if (Date.now() - timestamp > CACHE_TTL) {
         cache.delete(req.path);
       } else {
-        res.writeHead(200, { "Content-Type": contentType });
+        res.writeHead(200, { 
+          "Content-Type": contentType || "application/octet-stream",
+          "Cache-Control": "public, max-age=2592000",
+          "Access-Control-Allow-Origin": "*"
+        });
         return res.end(data);
       }
     }
@@ -69,10 +73,15 @@ app.get("/e/*", async (req, res, next) => {
     const data = Buffer.from(await asset.arrayBuffer());
     const ext = path.extname(reqTarget);
     const no = [".unityweb"];
-    const contentType = no.includes(ext) ? "application/octet-stream" : mime.getType(ext);
+    const contentType = no.includes(ext) ? "application/octet-stream" : (mime.getType(ext) || "application/octet-stream");
 
     cache.set(req.path, { data, contentType, timestamp: Date.now() });
-    res.writeHead(200, { "Content-Type": contentType });
+    res.writeHead(200, { 
+      "Content-Type": contentType,
+      "Cache-Control": "public, max-age=2592000",
+      "Access-Control-Allow-Origin": "*",
+      "Content-Length": data.length
+    });
     res.end(data);
   } catch (error) {
     console.error("Error fetching asset:", error);
@@ -105,17 +114,30 @@ const routes = [
 // biome-ignore lint: idk
 routes.forEach(route => {
   app.get(route.path, (_req, res) => {
-    res.sendFile(path.join(__dirname, "static", route.file));
+    res.sendFile(path.join(__dirname, "static", route.file), (err) => {
+      if (err) {
+        console.error(err);
+        res.status(404).sendFile(path.join(__dirname, "static", "404.html"));
+      }
+    });
   });
 });
 
 app.use((req, res, next) => {
-  res.status(404).sendFile(path.join(__dirname, "static", "404.html"));
+  res.status(404).sendFile(path.join(__dirname, "static", "404.html"), (err) => {
+    if (err) {
+      res.status(404).send("404 - Page Not Found");
+    }
+  });
 });
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).sendFile(path.join(__dirname, "static", "404.html"));
+  res.status(500).sendFile(path.join(__dirname, "static", "404.html"), (err) => {
+    if (err) {
+      res.status(500).send("500 - Internal Server Error");
+    }
+  });
 });
 
 server.on("request", (req, res) => {
@@ -130,12 +152,16 @@ server.on("upgrade", (req, socket, head) => {
   if (bareServer.shouldRoute(req)) {
     bareServer.routeUpgrade(req, socket, head);
   } else {
-    socket.end();
+    socket.destroy();
   }
 });
 
 server.on("listening", () => {
   console.log(chalk.green(`🌍 Server is running on http://localhost:${PORT}`));
+});
+
+server.on("error", (err) => {
+  console.error(chalk.red("Server error:"), err);
 });
 
 server.listen({ port: PORT });
