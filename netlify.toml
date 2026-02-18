@@ -1,9 +1,2 @@
 [build]
-  command = "npm install && npm run build"
-  publish = "build"
-
-[dev]
-  command = "npm start"
-
-[functions]
-  node_bundler = "esbuild"
+  command = "npm install"
